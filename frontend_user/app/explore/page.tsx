@@ -10,7 +10,6 @@ import SearchBar from "../../components/SearchBar";
 import FilterPanel, { type ExploreFilters } from "../../components/FilterPanel";
 import LoadingSkeleton from "../../components/LoadingSkeleton";
 import EmptyStateMessage from "../../components/EmptyStateMessage";
-import MapView from "../../components/MapView";
 import ItemDetailsModal from "../../components/ItemDetailsModal";
 import ExploreTile from "../../components/ExploreTile";
 import { useAuth } from "../../context/AuthContext";
@@ -36,7 +35,6 @@ export default function ExplorePage() {
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filters, setFilters] = useState<ExploreFilters>(defaultFilters);
-  const [showMap, setShowMap] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [apiError, setApiError] = useState("");
   const [items, setItems] = useState<ExploreItem[]>([]);
@@ -144,12 +142,19 @@ export default function ExplorePage() {
 
   const handleReportSubmit = async (data: ReportFlowData) => {
     try {
+      const resolvedLocationFrom = data.locationFrom;
+      const resolvedLocationTo = data.locationTo;
+
       const formData = new FormData();
       formData.append("itemType", data.itemType || "lost");
       formData.append("title", data.title);
       formData.append("category", data.category);
-      formData.append("location", data.location);
-      formData.append("dateTime", data.dateTime);
+      formData.append("locationFrom", resolvedLocationFrom);
+      formData.append("locationTo", resolvedLocationTo);
+      formData.append("timeFrom", data.timeFrom);
+      formData.append("timeTo", data.timeTo);
+      formData.append("location", `${resolvedLocationFrom} -> ${resolvedLocationTo}`);
+      formData.append("dateTime", data.timeFrom);
       formData.append("description", data.description);
       formData.append("authenticityDetail", data.authenticityDetail);
       formData.append("tags", data.category.toLowerCase());
@@ -202,16 +207,6 @@ export default function ExplorePage() {
               <p className="text-[10px] uppercase tracking-[0.28em] text-cyan/70">Discovery</p>
               <h1 className="text-2xl font-bold leading-tight">Explore nearby signals</h1>
             </div>
-            <button
-              onClick={() => setShowMap((previous) => !previous)}
-              className={`rounded-2xl border px-3 py-2 text-xs font-semibold transition ${
-                showMap
-                  ? "border-cyan/40 bg-cyan/15 text-cyan"
-                  : "border-white/10 bg-white/10 text-white/80"
-              }`}
-            >
-              {showMap ? "List View" : "Map View"}
-            </button>
           </div>
 
           <SearchBar value={searchText} onChange={setSearchText} />
@@ -238,8 +233,6 @@ export default function ExplorePage() {
           <LoadingSkeleton />
         ) : visibleItems.length === 0 ? (
           <EmptyStateMessage />
-        ) : showMap ? (
-          <MapView items={visibleItems} onPick={(item) => setSelectedItem(item)} />
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
@@ -290,6 +283,7 @@ export default function ExplorePage() {
         isOpen={showReportFlow}
         onClose={() => setShowReportFlow(false)}
         onSubmit={handleReportSubmit}
+        initialItemType="lost"
       />
     </main>
   );

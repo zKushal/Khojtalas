@@ -50,3 +50,23 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_fullName(self, obj):
         return obj.full_name
+
+
+class UserProfileUpdateSerializer(serializers.Serializer):
+    fullName = serializers.CharField(max_length=160)
+
+    def validate_fullName(self, value):
+        name = value.strip()
+        if len(name) < 2:
+            raise serializers.ValidationError("Full name must be at least 2 characters.")
+        return name
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    currentPassword = serializers.CharField()
+    newPassword = serializers.CharField(min_length=8)
+
+    def validate(self, attrs):
+        if attrs["currentPassword"] == attrs["newPassword"]:
+            raise serializers.ValidationError("New password must be different from current password.")
+        return attrs

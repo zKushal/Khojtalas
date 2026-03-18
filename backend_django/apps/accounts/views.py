@@ -10,7 +10,13 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from .permissions import IsAdminRole
-from .serializers import LoginSerializer, UserProfileSerializer, UserSignupSerializer
+from .serializers import (
+    ChangePasswordSerializer,
+    LoginSerializer,
+    UserProfileSerializer,
+    UserProfileUpdateSerializer,
+    UserSignupSerializer,
+)
 from apps.items.models import Item
 from apps.notifications.models import Notification
 
@@ -105,6 +111,50 @@ def get_user_profile(request):
     if request.user.role != "user":
         return Response({"success": False, "message": "Unauthorized."}, status=status.HTTP_403_FORBIDDEN)
     return Response({"success": True, "user": UserProfileSerializer(request.user).data})
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_user_profile(request):
+    if request.user.role != "user":
+        return Response({"success": False, "message": "Unauthorized."}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = UserProfileUpdateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    full_name = serializer.validated_data["fullName"]
+    request.user.first_name = full_name
+    request.user.last_name = ""
+    request.user.save(update_fields=["first_name", "last_name"])
+
+    return Response(
+        {
+            "success": True,
+            "message": "Profile updated successfully.",
+            "user": UserProfileSerializer(request.user).data,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def change_user_password(request):
+    if request.user.role != "user":
+        return Response({"success": False, "message": "Unauthorized."}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = ChangePasswordSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    current_password = serializer.validated_data["currentPassword"]
+    new_password = serializer.validated_data["newPassword"]
+
+    if not request.user.check_password(current_password):
+        return Response({"success": False, "message": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+    request.user.set_password(new_password)
+    request.user.save(update_fields=["password"])
+
+    return Response({"success": True, "message": "Password changed successfully. Please log in again."})
 
 
 @api_view(["POST"])

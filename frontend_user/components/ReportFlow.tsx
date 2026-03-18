@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export type ReportFlowData = {
   step: 1 | 2 | 3;
   itemType: "lost" | "found" | null;
   title: string;
   category: string;
-  location: string;
-  dateTime: string;
+  locationFrom: string;
+  locationTo: string;
+  timeFrom: string;
+  timeTo: string;
   description: string;
   image: File | null;
   video: File | null;
@@ -17,28 +19,64 @@ type ReportFlowProps = {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: ReportFlowData) => void;
+  initialItemType?: "lost" | "found";
 };
 
 const categories = ["Electronics", "Documents", "Jewelry", "Pets", "Clothing", "Bags", "Keys", "Other"];
 
-export default function ReportFlow({ isOpen, onClose, onSubmit }: ReportFlowProps) {
+export default function ReportFlow({ isOpen, onClose, onSubmit, initialItemType = "lost" }: ReportFlowProps) {
+  const maxDateTime = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+
   const [data, setData] = useState<ReportFlowData>({
     step: 1,
-    itemType: null,
+    itemType: initialItemType,
     title: "",
     category: "",
-    location: "",
-    dateTime: "",
+    locationFrom: "",
+    locationTo: "",
+    timeFrom: "",
+    timeTo: "",
     description: "",
     image: null,
     video: null,
     authenticityDetail: "",
   });
 
+  useEffect(() => {
+    if (!isOpen) return;
+    setData((previous) => ({ ...previous, itemType: initialItemType }));
+  }, [initialItemType, isOpen]);
+
   const handleStep1Next = () => {
-    if (data.itemType && data.title && data.category && data.location && data.dateTime) {
-      setData({ ...data, step: 2 });
+    if (
+      !data.itemType ||
+      !data.title ||
+      !data.category ||
+      !data.locationFrom ||
+      !data.locationTo ||
+      !data.timeFrom ||
+      !data.timeTo
+    ) {
+      return;
     }
+
+    const fromTime = new Date(data.timeFrom);
+    const toTime = new Date(data.timeTo);
+    const now = new Date();
+
+    if (fromTime > now || toTime > now) {
+      alert("Future date/time is not allowed.");
+      return;
+    }
+
+    if (toTime < fromTime) {
+      alert("Time To cannot be earlier than Time From.");
+      return;
+    }
+
+    setData({ ...data, step: 2 });
   };
 
   const step2CanProceed =
@@ -58,8 +96,10 @@ export default function ReportFlow({ isOpen, onClose, onSubmit }: ReportFlowProp
         itemType: null,
         title: "",
         category: "",
-        location: "",
-        dateTime: "",
+        locationFrom: "",
+        locationTo: "",
+        timeFrom: "",
+        timeTo: "",
         description: "",
         image: null,
         video: null,
@@ -72,10 +112,11 @@ export default function ReportFlow({ isOpen, onClose, onSubmit }: ReportFlowProp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/50 backdrop-blur-sm">
-      <div className="w-full rounded-t-3xl border border-white/10 bg-obsidian p-6 text-white">
-        <div className="mx-auto max-w-md">
-          <div className="mb-6 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-end overflow-y-auto bg-black/50 p-2 backdrop-blur-sm sm:p-4">
+      <div className="mx-auto w-full max-w-2xl rounded-t-3xl border border-white/10 bg-obsidian text-white md:rounded-3xl">
+        <div className="border-b border-white/10 px-4 pb-4 pt-5 sm:px-6">
+          <div className="mx-auto max-w-md">
+            <div className="mb-6 flex items-center justify-between">
             <h2 className="text-2xl font-bold">Report Item</h2>
             <button
               onClick={onClose}
@@ -93,30 +134,16 @@ export default function ReportFlow({ isOpen, onClose, onSubmit }: ReportFlowProp
               />
             ))}
           </div>
+          </div>
+        </div>
+
+        <div className="max-h-[72vh] overflow-y-auto px-4 pb-6 pt-4 sm:px-6">
+          <div className="mx-auto max-w-md">
 
           {data.step === 1 && (
             <div className="space-y-4">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setData({ ...data, itemType: "lost" })}
-                  className={`flex-1 rounded-xl border-2 px-4 py-2 font-semibold transition ${
-                    data.itemType === "lost"
-                      ? "border-magenta bg-magenta/15 text-magenta"
-                      : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"
-                  }`}
-                >
-                  Lost Item
-                </button>
-                <button
-                  onClick={() => setData({ ...data, itemType: "found" })}
-                  className={`flex-1 rounded-xl border-2 px-4 py-2 font-semibold transition ${
-                    data.itemType === "found"
-                      ? "border-cyan bg-cyan/15 text-cyan"
-                      : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"
-                  }`}
-                >
-                  Found Item
-                </button>
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80">
+                Reporting type: <span className="font-semibold text-white">{data.itemType === "found" ? "Found Item" : "Lost Item"}</span>
               </div>
 
               <input
@@ -142,30 +169,65 @@ export default function ReportFlow({ isOpen, onClose, onSubmit }: ReportFlowProp
 
               <input
                 type="text"
-                placeholder="Location"
-                value={data.location}
-                onChange={(e) => setData({ ...data, location: e.target.value })}
+                placeholder="Location From"
+                value={data.locationFrom}
+                onChange={(e) => setData({ ...data, locationFrom: e.target.value })}
                 className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
               />
 
               <input
-                type="datetime-local"
-                value={data.dateTime}
-                onChange={(e) => setData({ ...data, dateTime: e.target.value })}
-                className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
+                type="text"
+                placeholder="Location To"
+                value={data.locationTo}
+                onChange={(e) => setData({ ...data, locationTo: e.target.value })}
+                className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
               />
+
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/70">Time Between</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="mb-1 text-xs text-white/60">From</p>
+                    <input
+                      type="datetime-local"
+                      value={data.timeFrom}
+                      onChange={(e) => setData({ ...data, timeFrom: e.target.value })}
+                      max={maxDateTime}
+                      className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs text-white/60">To</p>
+                    <input
+                      type="datetime-local"
+                      value={data.timeTo}
+                      onChange={(e) => setData({ ...data, timeTo: e.target.value })}
+                      max={maxDateTime}
+                      className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
 
               <textarea
                 placeholder="Description"
                 value={data.description}
                 onChange={(e) => setData({ ...data, description: e.target.value })}
-                className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
                 rows={3}
               />
 
               <button
                 onClick={handleStep1Next}
-                disabled={!data.itemType || !data.title || !data.category || !data.location || !data.dateTime}
+                disabled={
+                  !data.itemType ||
+                  !data.title ||
+                  !data.category ||
+                  !data.locationFrom ||
+                  !data.locationTo ||
+                  !data.timeFrom ||
+                  !data.timeTo
+                }
                 className="w-full rounded-xl bg-gradient-to-r from-cyan to-magenta px-4 py-3 font-semibold text-black transition disabled:opacity-50"
               >
                 Next
@@ -288,6 +350,7 @@ export default function ReportFlow({ isOpen, onClose, onSubmit }: ReportFlowProp
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

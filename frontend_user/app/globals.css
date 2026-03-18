@@ -4,6 +4,33 @@
 
 :root {
   color-scheme: dark;
+  --app-bg: #0d0d0d;
+  --app-fg: #ffffff;
+  --obsidian-color: #0d0d0d;
+  --onyx-color: #1a1a1a;
+  --cyan-color: #00f2ea;
+  --magenta-color: #ff0050;
+  --silver-color: #a1a1a1;
+}
+
+html[data-theme="midnight"] {
+  --app-bg: #050816;
+  --app-fg: #e8f1ff;
+  --obsidian-color: #050816;
+  --onyx-color: #111a33;
+  --cyan-color: #60a5fa;
+  --magenta-color: #818cf8;
+  --silver-color: #9ca3af;
+}
+
+html[data-theme="sunrise"] {
+  --app-bg: #1a0f0a;
+  --app-fg: #fff7ed;
+  --obsidian-color: #1a0f0a;
+  --onyx-color: #2a1610;
+  --cyan-color: #fdba74;
+  --magenta-color: #fb7185;
+  --silver-color: #c7b5a5;
 }
 
 html {
@@ -15,9 +42,10 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
-  background: #0d0d0d;
-  color: #ffffff;
+  background: var(--app-bg);
+  color: var(--app-fg);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 220ms ease, color 220ms ease;
 }
 
 * {
@@ -39,4 +67,36 @@ button {
 
 .text-shadow-glow {
   text-shadow: 0 0 12px rgba(0, 242, 234, 0.4), 0 0 24px rgba(255, 0, 80, 0.35);
+}
+
+.bg-obsidian {
+  background-color: var(--obsidian-color) !important;
+}
+
+.bg-onyx {
+  background-color: var(--onyx-color) !important;
+}
+
+.text-cyan {
+  color: var(--cyan-color) !important;
+}
+
+.bg-cyan {
+  background-color: var(--cyan-color) !important;
+}
+
+.border-cyan {
+  border-color: var(--cyan-color) !important;
+}
+
+.text-magenta {
+  color: var(--magenta-color) !important;
+}
+
+.bg-magenta {
+  background-color: var(--magenta-color) !important;
+}
+
+.text-silver {
+  color: var(--silver-color) !important;
 }

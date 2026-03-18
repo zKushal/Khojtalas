@@ -2,9 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Header from "../components/Header";
-import MainNavigation from "../components/MainNavigation";
-import ItemFeed from "../components/ItemFeed";
 import type { LostFoundItem } from "../components/ItemCard";
 import ReportFlow, { type ReportFlowData } from "../components/ReportFlow";
 import SplashScreen from "../components/SplashScreen";
@@ -30,8 +27,29 @@ type ApiFeedItem = {
   authenticityDetail?: string;
 };
 
-type ViewMode = "mobile" | "desktop";
-type DesktopSection = "dashboard" | "browse-items" | "ai-matches";
+type DesktopSection = "dashboard" | "browse-items" | "ai-matches" | "settings";
+
+type ThemeMode = "aurora" | "midnight" | "sunrise";
+
+type ThemeTokens = {
+  shellBg: string;
+  activeNav: string;
+  primaryButton: string;
+  secondaryButton: string;
+  highlightPill: string;
+  chartFill: string;
+};
+
+type UserSettings = {
+  realtimeNotifications: boolean;
+  emailNotifications: boolean;
+  theme: ThemeMode;
+  profileName: string;
+  language: "en" | "hi";
+  privacyMode: boolean;
+};
+
+const USER_SETTINGS_STORAGE_KEY = "kt_user_settings";
 
 type AiMatchItem = {
   id: string;
@@ -66,29 +84,109 @@ function mapApiFeedItem(item: ApiFeedItem): LostFoundItem {
 
 export default function HomePage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, logout, refreshProfile } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
   const [showReportFlow, setShowReportFlow] = useState(false);
+  const [reportItemType, setReportItemType] = useState<"lost" | "found">("lost");
   const [feedItems, setFeedItems] = useState<LostFoundItem[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [aiMatches, setAiMatches] = useState<AiMatchItem[]>([]);
   const [loadingAiMatches, setLoadingAiMatches] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("mobile");
+  const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
   const [desktopSection, setDesktopSection] = useState<DesktopSection>("dashboard");
+  const [settings, setSettings] = useState<UserSettings>({
+    realtimeNotifications: true,
+    emailNotifications: false,
+    theme: "aurora",
+    profileName: "",
+    language: "en",
+    privacyMode: false,
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(USER_SETTINGS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<UserSettings>;
+      setSettings((current) => ({
+        ...current,
+        ...parsed,
+      }));
+    } catch {
+      // Ignore malformed settings and continue with defaults.
+    }
+  }, []);
 
   useEffect(() => {
-    const savedMode = window.localStorage.getItem("kt_view_mode") as ViewMode | null;
-    if (savedMode === "mobile" || savedMode === "desktop") {
-      setViewMode(savedMode);
+    localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  }, [settings]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", settings.theme);
+  }, [settings.theme]);
+
+  useEffect(() => {
+    if (!user?.fullName) return;
+    setSettings((current) => {
+      if (current.profileName) return current;
+      return { ...current, profileName: user.fullName };
+    });
+  }, [user?.fullName]);
+
+  const handleSaveProfileName = async () => {
+    const nextName = settings.profileName.trim();
+    if (nextName.length < 2) {
+      alert("Profile name should be at least 2 characters.");
       return;
     }
 
-    setViewMode(window.innerWidth >= 1024 ? "desktop" : "mobile");
-  }, []);
+    try {
+      setIsSavingProfile(true);
+      await api.patch("/user/profile/update", { fullName: nextName });
+      await refreshProfile();
+      alert("Profile name updated.");
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to update profile name."));
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
-  const handleSwitchViewMode = (mode: ViewMode) => {
-    setViewMode(mode);
-    window.localStorage.setItem("kt_view_mode", mode);
+  const handleChangePassword = async () => {
+    const { currentPassword, newPassword, confirmPassword } = passwordForm;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      alert("Fill all password fields.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      alert("New password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert("New password and confirm password do not match.");
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      await api.post("/user/profile/change-password", { currentPassword, newPassword });
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      alert("Password changed. Please log in again.");
+      logout();
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to change password."));
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   useEffect(() => {
@@ -108,12 +206,19 @@ export default function HomePage() {
 
   const handleReportSubmit = async (data: ReportFlowData) => {
     try {
+      const resolvedLocationFrom = data.locationFrom;
+      const resolvedLocationTo = data.locationTo;
+
       const formData = new FormData();
       formData.append("itemType", data.itemType || "lost");
       formData.append("title", data.title);
       formData.append("category", data.category);
-      formData.append("location", data.location);
-      formData.append("dateTime", data.dateTime);
+      formData.append("locationFrom", resolvedLocationFrom);
+      formData.append("locationTo", resolvedLocationTo);
+      formData.append("timeFrom", data.timeFrom);
+      formData.append("timeTo", data.timeTo);
+      formData.append("location", `${resolvedLocationFrom} -> ${resolvedLocationTo}`);
+      formData.append("dateTime", data.timeFrom);
       formData.append("description", data.description);
       formData.append("authenticityDetail", data.authenticityDetail);
       formData.append("tags", data.category.toLowerCase());
@@ -127,6 +232,12 @@ export default function HomePage() {
 
       await fetchFeedItems();
 
+      // Found item submission triggers immediate AI comparison refresh.
+      if ((data.itemType || "lost") === "found") {
+        await fetchAiMatches();
+        setDesktopSection("ai-matches");
+      }
+
       alert("✓ Item reported successfully! It's now under review.");
     } catch (error) {
       alert(getApiErrorMessage(error, "Failed to submit report."));
@@ -134,11 +245,12 @@ export default function HomePage() {
     }
   };
 
-  const handleReportClick = () => {
+  const handleReportClick = (itemType: "lost" | "found" = "lost") => {
     if (!isAuthenticated && !localStorage.getItem("kt_user_token")) {
       router.push("/signup?next=%2F&intent=report");
       return;
     }
+    setReportItemType(itemType);
     setShowReportFlow(true);
   };
 
@@ -152,22 +264,9 @@ export default function HomePage() {
 
   const fetchFeedItems = async () => {
     try {
-      const publicItemsPromise = api.get("/user/items");
-      const token = typeof window !== "undefined" ? localStorage.getItem("kt_user_token") : null;
-      const myItemsPromise = token ? api.get("/user/my-items") : Promise.resolve({ data: { items: [] } });
-
-      const [publicResponse, myResponse] = await Promise.all([publicItemsPromise, myItemsPromise]);
-
+      const publicResponse = await api.get("/user/items");
       const publicItems = Array.isArray(publicResponse?.data?.items) ? publicResponse.data.items : [];
-      const myItems = Array.isArray(myResponse?.data?.items) ? myResponse.data.items : [];
-
-      const mergedMap = new Map<string, ApiFeedItem>();
-
-      for (const item of [...myItems, ...publicItems]) {
-        mergedMap.set(String(item.id), item as ApiFeedItem);
-      }
-
-      const normalized = Array.from(mergedMap.values()).map(mapApiFeedItem);
+      const normalized = publicItems.map(mapApiFeedItem);
       setFeedItems(normalized);
     } catch {
       setFeedItems([]);
@@ -258,6 +357,36 @@ export default function HomePage() {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!user?.id) return;
+
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socketUrl = `${protocol}://localhost:5000/ws/notifications/${user.id}/`;
+    const socket = new WebSocket(socketUrl);
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        if (payload?.type === "ai_match_detected") {
+          if (settings.realtimeNotifications) {
+            setRealtimeNotice(payload.title || "AI match detected");
+          }
+          fetchAiMatches();
+        }
+      } catch {
+        // Ignore malformed websocket payloads.
+      }
+    };
+
+    socket.onerror = () => {
+      // Keep silent on websocket errors so UI remains usable.
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [settings.realtimeNotifications, user?.id]);
+
+  useEffect(() => {
     let isActive = true;
 
     const loadMatches = async () => {
@@ -270,7 +399,7 @@ export default function HomePage() {
     const intervalId = window.setInterval(async () => {
       if (!isActive) return;
       await fetchAiMatches();
-    }, 8000);
+    }, 6000);
 
     return () => {
       isActive = false;
@@ -325,112 +454,117 @@ export default function HomePage() {
     }));
   }, [feedItems]);
 
+  const themeTokens = useMemo<ThemeTokens>(() => {
+    if (settings.theme === "midnight") {
+      return {
+        shellBg:
+          "bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.22),_transparent_42%),radial-gradient(circle_at_bottom_left,_rgba(2,6,23,0.9),_transparent_50%),#020617]",
+        activeNav: "bg-blue-400/20 text-blue-200",
+        primaryButton: "bg-blue-400 text-slate-950 hover:bg-blue-300",
+        secondaryButton: "bg-indigo-400 text-slate-950 hover:bg-indigo-300",
+        highlightPill: "bg-blue-400/20 text-blue-200",
+        chartFill: "bg-gradient-to-r from-blue-400 to-indigo-400",
+      };
+    }
+
+    if (settings.theme === "sunrise") {
+      return {
+        shellBg:
+          "bg-[radial-gradient(circle_at_top_right,_rgba(251,146,60,0.26),_transparent_42%),radial-gradient(circle_at_bottom_left,_rgba(244,63,94,0.18),_transparent_48%),#1a0f0a]",
+        activeNav: "bg-amber-300/20 text-amber-200",
+        primaryButton: "bg-amber-300 text-amber-950 hover:bg-amber-200",
+        secondaryButton: "bg-rose-300 text-rose-950 hover:bg-rose-200",
+        highlightPill: "bg-amber-300/20 text-amber-200",
+        chartFill: "bg-gradient-to-r from-amber-300 to-rose-300",
+      };
+    }
+
+    return {
+      shellBg:
+        "bg-[radial-gradient(circle_at_top_right,_rgba(0,242,234,0.2),_transparent_42%),radial-gradient(circle_at_bottom_left,_rgba(255,0,80,0.16),_transparent_48%),#090b12]",
+      activeNav: "bg-cyan/20 text-cyan",
+      primaryButton: "bg-cyan text-obsidian hover:opacity-90",
+      secondaryButton: "bg-magenta text-white hover:opacity-90",
+      highlightPill: "bg-emerald-400/20 text-emerald-300",
+      chartFill: "bg-gradient-to-r from-cyan to-magenta",
+    };
+  }, [settings.theme]);
+
   if (showSplash) return <SplashScreen />;
 
   return (
     <main className="relative min-h-screen bg-obsidian text-white">
-      <div className="fixed right-3 top-3 z-[70] flex justify-end">
-        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-onyx/90 p-1 shadow-2xl backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={() => handleSwitchViewMode("mobile")}
-            className={`rounded-xl px-4 py-2 text-xs font-semibold transition sm:text-sm ${
-              viewMode === "mobile"
-                ? "bg-cyan text-obsidian"
-                : "text-white/70 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            Mobile View
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSwitchViewMode("desktop")}
-            className={`rounded-xl px-4 py-2 text-xs font-semibold transition sm:text-sm ${
-              viewMode === "desktop"
-                ? "bg-magenta text-white"
-                : "text-white/70 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            Desktop View
-          </button>
-        </div>
-      </div>
+      <div className={`min-h-screen pb-10 pt-16 ${themeTokens.shellBg}`}>
+        <aside className="hidden h-[calc(100vh-4.5rem)] w-64 flex-col border-r border-white/10 bg-black/20 px-4 py-5 backdrop-blur-xl md:fixed md:left-4 md:top-16 md:flex md:rounded-3xl">
+          <h1 className="px-3 text-lg font-bold tracking-tight text-white">KhojTalas</h1>
+          <p className="px-3 pt-1 text-xs text-silver/80">AI Lost & Found Command Center</p>
+          <nav className="mt-6 space-y-2">
+            {[
+              "Dashboard",
+              "Report Lost Item",
+              "Report Found Item",
+              "Browse Items",
+              "AI Matches",
+              "Settings",
+            ].map((label) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  if (label === "Report Lost Item" || label === "Report Found Item") {
+                    handleReportClick(label === "Report Found Item" ? "found" : "lost");
+                    return;
+                  }
 
-      {viewMode === "mobile" ? (
-        <>
-          <div className="pb-32">
-            <Header />
-            <div className="pt-16">
-              <ItemFeed
-                items={feedItems}
-                isLoading={loadingFeed}
-                emptyMessage="No feeds currently"
-                onReportSuspicious={() => alert("Thank you for reporting. Our team will review this.")}
-              />
+                  if (label === "Browse Items") {
+                    setDesktopSection("browse-items");
+                    return;
+                  }
+
+                  if (label === "AI Matches") {
+                    setDesktopSection("ai-matches");
+                    return;
+                  }
+
+                  if (label === "Dashboard") {
+                    setDesktopSection("dashboard");
+                    return;
+                  }
+
+                  if (label === "Settings") {
+                    setDesktopSection("settings");
+                    return;
+                  }
+
+                }}
+                className={`flex w-full items-center justify-start rounded-xl px-3 py-2.5 text-sm transition ${
+                  (label === "Dashboard" && desktopSection === "dashboard") ||
+                  (label === "Browse Items" && desktopSection === "browse-items") ||
+                  (label === "AI Matches" && desktopSection === "ai-matches") ||
+                  (label === "Settings" && desktopSection === "settings")
+                    ? themeTokens.activeNav
+                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <section className="mx-auto w-full max-w-7xl px-4 sm:px-6 md:pl-80 md:pr-8">
+          {realtimeNotice && (
+            <div className="mb-4 flex items-center justify-between rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+              <span>{realtimeNotice}</span>
+              <button
+                type="button"
+                onClick={() => setRealtimeNotice(null)}
+                className="rounded-md bg-white/10 px-2 py-1 text-xs text-white"
+              >
+                Dismiss
+              </button>
             </div>
-          </div>
-          <MainNavigation onReportClick={handleReportClick} onProfileClick={handleProfileClick} />
-        </>
-      ) : (
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(0,242,234,0.2),_transparent_42%),radial-gradient(circle_at_bottom_left,_rgba(255,0,80,0.16),_transparent_48%),#090b12] pb-10 pt-16">
-          <aside className="hidden h-[calc(100vh-4.5rem)] w-64 flex-col border-r border-white/10 bg-black/20 px-4 py-5 backdrop-blur-xl md:fixed md:left-4 md:top-16 md:flex md:rounded-3xl">
-            <h1 className="px-3 text-lg font-bold tracking-tight text-white">KhojTalas</h1>
-            <p className="px-3 pt-1 text-xs text-silver/80">AI Lost & Found Command Center</p>
-            <nav className="mt-6 space-y-2">
-              {[
-                "Dashboard",
-                "Report Lost Item",
-                "Report Found Item",
-                "Browse Items",
-                "AI Matches",
-                "Map",
-                "Notifications",
-                "Profile",
-                "Settings",
-              ].map((label, index) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => {
-                    if (label === "Report Lost Item" || label === "Report Found Item") {
-                      handleReportClick();
-                      return;
-                    }
-
-                    if (label === "Browse Items") {
-                      setDesktopSection("browse-items");
-                      return;
-                    }
-
-                    if (label === "AI Matches") {
-                      setDesktopSection("ai-matches");
-                      return;
-                    }
-
-                    if (label === "Dashboard") {
-                      setDesktopSection("dashboard");
-                      return;
-                    }
-
-                    if (label === "Profile") {
-                      handleProfileClick();
-                    }
-                  }}
-                  className={`flex w-full items-center justify-start rounded-xl px-3 py-2.5 text-sm transition ${
-                    (label === "Dashboard" && desktopSection === "dashboard") ||
-                    (label === "Browse Items" && desktopSection === "browse-items") ||
-                    (label === "AI Matches" && desktopSection === "ai-matches")
-                      ? "bg-cyan/20 text-cyan"
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </nav>
-          </aside>
-
-          <section className="mx-auto w-full max-w-7xl px-4 sm:px-6 md:pl-80 md:pr-8">
+          )}
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
               <div>
                 <h2 className="text-xl font-semibold text-white sm:text-2xl">
@@ -438,32 +572,21 @@ export default function HomePage() {
                     ? "Find My Item Dashboard"
                     : desktopSection === "browse-items"
                       ? "Browse All Entered Items"
-                      : "AI Match Center"}
+                      : desktopSection === "ai-matches"
+                        ? "AI Match Center"
+                        : "Settings"}
                 </h2>
                 <p className="text-sm text-silver/80">
                   {desktopSection === "dashboard"
                     ? "Real-time visibility for lost and found reporting with AI matching."
                     : desktopSection === "browse-items"
                       ? "Showing every reported lost and found item in the system feed."
-                      : "Review AI-detected lost and found matches and take action."}
+                      : desktopSection === "ai-matches"
+                        ? "Review AI-detected lost and found matches and take action."
+                        : "Customize notifications and refresh behavior for your dashboard."}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleReportClick}
-                  className="rounded-xl bg-cyan px-4 py-2 text-sm font-semibold text-obsidian transition hover:opacity-90"
-                >
-                  Report Lost Item
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReportClick}
-                  className="rounded-xl bg-magenta px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-                >
-                  Report Found Item
-                </button>
-              </div>
+
             </div>
 
             {desktopSection === "dashboard" ? (
@@ -494,7 +617,7 @@ export default function HomePage() {
                           </div>
                           <div className="h-2 rounded-full bg-white/10">
                             <div
-                              className="h-2 rounded-full bg-gradient-to-r from-cyan to-magenta"
+                              className={`h-2 rounded-full ${themeTokens.chartFill}`}
                               style={{ width: `${Math.max(6, Math.min(100, entry.value * 12))}%` }}
                             />
                           </div>
@@ -508,7 +631,7 @@ export default function HomePage() {
                     <div className="mt-4 space-y-3">
                       {(recentActivity.length ? recentActivity : [{ id: "none", text: "No live events yet", time: "", status: "LOST" as const }]).map((activity) => (
                         <div key={activity.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                          <p className="text-sm text-white">{activity.text}</p>
+                          <p className="text-sm text-white">{settings.privacyMode ? "Activity hidden in privacy mode" : activity.text}</p>
                           <p className="mt-1 text-xs text-silver/70">{activity.time || "Waiting for new reports..."}</p>
                         </div>
                       ))}
@@ -516,11 +639,11 @@ export default function HomePage() {
                   </article>
                 </div>
 
-                <div className="mt-6 grid gap-4 xl:grid-cols-[1.2fr,1fr]">
+                <div className="mt-6 grid gap-4">
                   <article className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
                     <div className="flex items-center justify-between">
                       <h3 className="text-base font-semibold text-white">AI Match Center</h3>
-                      <span className="rounded-full bg-emerald-400/20 px-3 py-1 text-xs text-emerald-300">{"\u226595% Auto Notify"}</span>
+                      <span className={`rounded-full px-3 py-1 text-xs ${themeTokens.highlightPill}`}>{"\u226595% Auto Notify"}</span>
                     </div>
                     <div className="mt-4 space-y-3">
                       {aiMatchesDetected > 0 ? (
@@ -539,21 +662,6 @@ export default function HomePage() {
                         <p className="text-sm text-silver/75">No high-confidence matches detected yet.</p>
                       )}
                     </div>
-                  </article>
-
-                  <article className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-                    <h3 className="text-base font-semibold text-white">Interactive Map Tracking</h3>
-                    <div className="mt-4 rounded-xl border border-dashed border-cyan/40 bg-cyan/5 p-4">
-                      <p className="text-sm text-cyan/90">Map integration placeholder for clustered lost/found markers.</p>
-                      <p className="mt-2 text-xs text-cyan/75">Connect Mapbox or Google Maps API to render transport routes and radius filters.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => router.push("/explore")}
-                      className="mt-4 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
-                    >
-                      Open Full Map & Explore
-                    </button>
                   </article>
                 </div>
               </>
@@ -590,7 +698,7 @@ export default function HomePage() {
                             </span>
                           </div>
                           <p className="line-clamp-2 text-xs text-silver/80">{item.description || "No description provided."}</p>
-                          <p className="text-xs text-silver/70">{item.location}</p>
+                          <p className="text-xs text-silver/70">{settings.privacyMode ? "Location hidden" : item.location}</p>
                           <p className="text-xs text-silver/60">{item.timeAgo}</p>
                         </div>
                       </article>
@@ -598,7 +706,7 @@ export default function HomePage() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : desktopSection === "ai-matches" ? (
               <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
                 {loadingAiMatches ? (
                   <div className="rounded-xl border border-white/10 bg-black/20 p-6 text-center text-silver/80">Loading AI matches...</div>
@@ -644,7 +752,7 @@ export default function HomePage() {
                         <button
                           type="button"
                           onClick={() => handleContactFinder(match)}
-                          className="rounded-lg bg-cyan px-3 py-1.5 text-xs font-semibold text-obsidian"
+                                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${themeTokens.primaryButton}`}
                         >
                           Contact finder
                         </button>
@@ -669,15 +777,175 @@ export default function HomePage() {
                   ))
                 )}
               </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <article className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <h3 className="text-base font-semibold text-white">Profile</h3>
+                  <div className="mt-4 space-y-3">
+                    <label className="block text-sm text-white">
+                      <span className="mb-1 block text-silver/80">Profile name</span>
+                      <input
+                        type="text"
+                        value={settings.profileName}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, profileName: event.target.value }))
+                        }
+                        className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                        placeholder="Enter profile name"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleSaveProfileName}
+                      disabled={isSavingProfile}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60 ${themeTokens.primaryButton}`}
+                    >
+                      {isSavingProfile ? "Saving..." : "Save Profile Name"}
+                    </button>
+                  </div>
+                </article>
+
+                <article className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <h3 className="text-base font-semibold text-white">Theme</h3>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    {[
+                      { value: "aurora", label: "Aurora" },
+                      { value: "midnight", label: "Midnight" },
+                      { value: "sunrise", label: "Sunrise" },
+                    ].map((theme) => (
+                      <button
+                        key={theme.value}
+                        type="button"
+                        onClick={() =>
+                          setSettings((current) => ({
+                            ...current,
+                            theme: theme.value as ThemeMode,
+                          }))
+                        }
+                        className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                          settings.theme === theme.value
+                            ? themeTokens.activeNav
+                            : "border-white/15 bg-black/20 text-white/80 hover:bg-white/10"
+                        }`}
+                      >
+                        {theme.label}
+                      </button>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <h3 className="text-base font-semibold text-white">Notification Preferences</h3>
+                  <div className="mt-4 space-y-3">
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white">
+                      <span>Realtime AI match alerts</span>
+                      <input
+                        type="checkbox"
+                        checked={settings.realtimeNotifications}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, realtimeNotifications: event.target.checked }))
+                        }
+                        className="h-4 w-4 accent-cyan"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white">
+                      <span>Email notifications</span>
+                      <input
+                        type="checkbox"
+                        checked={settings.emailNotifications}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, emailNotifications: event.target.checked }))
+                        }
+                        className="h-4 w-4 accent-cyan"
+                      />
+                    </label>
+                  </div>
+                </article>
+
+                <article className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <h3 className="text-base font-semibold text-white">Security</h3>
+                  <div className="mt-4 space-y-2">
+                    <input
+                      type="password"
+                      value={passwordForm.currentPassword}
+                      onChange={(event) =>
+                        setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))
+                      }
+                      placeholder="Current password"
+                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={passwordForm.newPassword}
+                      onChange={(event) =>
+                        setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))
+                      }
+                      placeholder="New password"
+                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={passwordForm.confirmPassword}
+                      onChange={(event) =>
+                        setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))
+                      }
+                      placeholder="Confirm new password"
+                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleChangePassword}
+                      disabled={isChangingPassword}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60 ${themeTokens.secondaryButton}`}
+                    >
+                      {isChangingPassword ? "Updating..." : "Change Password"}
+                    </button>
+                  </div>
+                </article>
+
+                <article className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <h3 className="text-base font-semibold text-white">Preferences</h3>
+                  <div className="mt-4 space-y-3">
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white">
+                      <span>Privacy mode (hide activity details)</span>
+                      <input
+                        type="checkbox"
+                        checked={settings.privacyMode}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, privacyMode: event.target.checked }))
+                        }
+                        className="h-4 w-4 accent-cyan"
+                      />
+                    </label>
+
+                    <label className="block text-sm text-white">
+                      <span className="mb-1 block text-silver/80">Language</span>
+                      <select
+                        value={settings.language}
+                        onChange={(event) =>
+                          setSettings((current) => ({
+                            ...current,
+                            language: event.target.value as "en" | "hi",
+                          }))
+                        }
+                        className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white focus:border-cyan focus:outline-none"
+                      >
+                        <option value="en">English</option>
+                        <option value="hi">Hindi</option>
+                      </select>
+                    </label>
+                  </div>
+                </article>
+              </div>
             )}
           </section>
-        </div>
-      )}
+      </div>
 
       <ReportFlow
         isOpen={showReportFlow}
         onClose={() => setShowReportFlow(false)}
         onSubmit={handleReportSubmit}
+        initialItemType={reportItemType}
       />
     </main>
   );

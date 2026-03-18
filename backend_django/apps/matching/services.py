@@ -30,18 +30,26 @@ def _normalize_feature_blob(item: Item) -> str:
         return ""
 
 
+def _primary_media_signature(item: Item) -> str:
+    media = item.media.order_by("sort_order", "id").first()
+    if not media or not media.media_file:
+        return ""
+    return (media.media_file.name or "").lower()
+
+
 def _score_pair(lost_item: Item, found_item: Item) -> Decimal:
     title_score = SequenceMatcher(None, (lost_item.title or "").lower(), (found_item.title or "").lower()).ratio()
     description_score = SequenceMatcher(None, (lost_item.description or "").lower(), (found_item.description or "").lower()).ratio()
     feature_score = SequenceMatcher(None, _normalize_feature_blob(lost_item), _normalize_feature_blob(found_item)).ratio()
+    media_score = SequenceMatcher(None, _primary_media_signature(lost_item), _primary_media_signature(found_item)).ratio()
     category_boost = 1.0 if lost_item.category.lower() == found_item.category.lower() else 0.9
 
-    weighted = ((title_score * 0.4) + (description_score * 0.4) + (feature_score * 0.2)) * category_boost
+    weighted = ((title_score * 0.25) + (description_score * 0.35) + (feature_score * 0.25) + (media_score * 0.15)) * category_boost
     return Decimal(str(round(weighted * 100, 2)))
 
 
-def run_auto_match_for_item(source_item: Item):
-    if source_item.verification_status != "verified":
+def run_auto_match_for_item(source_item: Item, include_all_lost: bool = False):
+    if source_item.status == "LOST" and source_item.verification_status != "verified":
         return []
 
     if source_item.status == "LOST":
@@ -49,7 +57,9 @@ def run_auto_match_for_item(source_item: Item):
         lost_item = source_item
         pairs = [(lost_item, c) for c in candidates]
     else:
-        candidates = Item.objects.filter(status="LOST", verification_status="verified").exclude(id=source_item.id)
+        candidates = Item.objects.filter(status="LOST").exclude(id=source_item.id)
+        if not include_all_lost:
+            candidates = candidates.filter(verification_status="verified")
         found_item = source_item
         pairs = [(c, found_item) for c in candidates]
 
@@ -68,10 +78,15 @@ def run_auto_match_for_item(source_item: Item):
 
         if not created:
             match.similarity_score = similarity
-            match.is_auto_notified = similarity >= Decimal("95.00")
+            previous_auto_notified = match.is_auto_notified
+            should_notify = similarity >= Decimal("95.00")
+            match.is_auto_notified = previous_auto_notified or should_notify
             match.save(update_fields=["similarity_score", "is_auto_notified"])
+        else:
+            should_notify = similarity >= Decimal("95.00")
+            previous_auto_notified = False
 
-        if similarity >= Decimal("95.00"):
+        if should_notify and not previous_auto_notified:
             Notification.objects.create(
                 user=lost_item.reporter,
                 type="ai_match_detected",

@@ -1,4 +1,5 @@
 import json
+from django.utils import timezone
 from django.utils.timesince import timesince
 from rest_framework import serializers
 from .models import Item, ItemMedia, ItemTag, MatchResult
@@ -33,6 +34,10 @@ class ItemSerializer(serializers.ModelSerializer):
     userTrustLevel = serializers.CharField(source="reporter.trust_level")
     authenticityDetail = serializers.CharField(source="authenticity_detail")
     tags = serializers.SerializerMethodField()
+    locationFrom = serializers.CharField(source="location_from")
+    locationTo = serializers.CharField(source="location_to")
+    timeFrom = serializers.DateTimeField(source="incident_from", allow_null=True)
+    timeTo = serializers.DateTimeField(source="incident_to", allow_null=True)
 
     class Meta:
         model = Item
@@ -46,6 +51,10 @@ class ItemSerializer(serializers.ModelSerializer):
             "tags",
             "reportedBy",
             "location",
+            "locationFrom",
+            "locationTo",
+            "timeFrom",
+            "timeTo",
             "timeAgo",
             "helpfulCount",
             "detailsCount",
@@ -95,8 +104,12 @@ class ItemCreateSerializer(serializers.Serializer):
     itemType = serializers.ChoiceField(choices=["lost", "found"])
     title = serializers.CharField(max_length=180)
     category = serializers.CharField(max_length=64)
-    location = serializers.CharField(max_length=240)
-    dateTime = serializers.DateTimeField()
+    location = serializers.CharField(max_length=240, required=False, allow_blank=True)
+    locationFrom = serializers.CharField(max_length=240, required=False, allow_blank=True)
+    locationTo = serializers.CharField(max_length=240, required=False, allow_blank=True)
+    dateTime = serializers.DateTimeField(required=False)
+    timeFrom = serializers.DateTimeField(required=False)
+    timeTo = serializers.DateTimeField(required=False)
     description = serializers.CharField(required=False, allow_blank=True)
     authenticityDetail = serializers.CharField()
     tags = serializers.CharField(required=False, allow_blank=True)
@@ -113,6 +126,35 @@ class ItemCreateSerializer(serializers.Serializer):
         video = attrs.get("video")
         if status == "FOUND" and (not image or not video):
             raise serializers.ValidationError("Found items require both image and video proof.")
+
+        location_from = attrs.get("locationFrom") or attrs.get("location")
+        location_to = attrs.get("locationTo") or attrs.get("location")
+        time_from = attrs.get("timeFrom") or attrs.get("dateTime")
+        time_to = attrs.get("timeTo") or attrs.get("dateTime")
+
+        if not location_from or not location_to:
+            raise serializers.ValidationError("locationFrom and locationTo are required.")
+
+        if not time_from or not time_to:
+            raise serializers.ValidationError("timeFrom and timeTo are required.")
+
+        current_tz = timezone.get_current_timezone()
+        if timezone.is_naive(time_from):
+            time_from = timezone.make_aware(time_from, current_tz)
+        if timezone.is_naive(time_to):
+            time_to = timezone.make_aware(time_to, current_tz)
+
+        now = timezone.now()
+        if time_from > now or time_to > now:
+            raise serializers.ValidationError("Future date/time is not allowed.")
+
+        if time_to < time_from:
+            raise serializers.ValidationError("timeTo cannot be earlier than timeFrom.")
+
+        attrs["_resolved_location_from"] = location_from
+        attrs["_resolved_location_to"] = location_to
+        attrs["_resolved_time_from"] = time_from
+        attrs["_resolved_time_to"] = time_to
         return attrs
 
     def create(self, validated_data):
@@ -130,8 +172,12 @@ class ItemCreateSerializer(serializers.Serializer):
             category=validated_data["category"],
             title=validated_data["title"],
             description=validated_data.get("description", ""),
-            location_text=validated_data["location"],
-            incident_at=validated_data["dateTime"],
+            location_from=validated_data["_resolved_location_from"],
+            location_to=validated_data["_resolved_location_to"],
+            location_text=f"{validated_data['_resolved_location_from']} -> {validated_data['_resolved_location_to']}",
+            incident_from=validated_data["_resolved_time_from"],
+            incident_to=validated_data["_resolved_time_to"],
+            incident_at=validated_data["_resolved_time_from"],
             visibility_scope=validated_data.get("scope") or "nearby",
             authenticity_detail=validated_data["authenticityDetail"],
             latitude=validated_data.get("latitude"),

@@ -37,7 +37,9 @@ def items_endpoint(request):
         item.ai_suggested_category = suggest_category_from_description(item.description)
         item.save(update_fields=["ai_suggested_category"])
 
-    if item.verification_status == "verified":
+    if item.status == "FOUND":
+        run_auto_match_for_item(item, include_all_lost=True)
+    elif item.verification_status == "verified":
         run_auto_match_for_item(item)
 
     return Response(
