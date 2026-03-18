@@ -5,10 +5,19 @@ export type ReportFlowData = {
   itemType: "lost" | "found" | null;
   title: string;
   category: string;
+  location: string;
+  dateTime: string;
   locationFrom: string;
   locationTo: string;
   timeFrom: string;
   timeTo: string;
+  brand: string;
+  model: string;
+  color: string;
+  quantity: string;
+  identifier: string;
+  contactNumber: string;
+  reward: string;
   description: string;
   image: File | null;
   video: File | null;
@@ -34,10 +43,19 @@ export default function ReportFlow({ isOpen, onClose, onSubmit, initialItemType 
     itemType: initialItemType,
     title: "",
     category: "",
+    location: "",
+    dateTime: "",
     locationFrom: "",
     locationTo: "",
     timeFrom: "",
     timeTo: "",
+    brand: "",
+    model: "",
+    color: "",
+    quantity: "",
+    identifier: "",
+    contactNumber: "",
+    reward: "",
     description: "",
     image: null,
     video: null,
@@ -50,15 +68,26 @@ export default function ReportFlow({ isOpen, onClose, onSubmit, initialItemType 
   }, [initialItemType, isOpen]);
 
   const handleStep1Next = () => {
-    if (
-      !data.itemType ||
-      !data.title ||
-      !data.category ||
-      !data.locationFrom ||
-      !data.locationTo ||
-      !data.timeFrom ||
-      !data.timeTo
-    ) {
+    if (!data.itemType || !data.title || !data.category) {
+      return;
+    }
+
+    if (data.itemType === "found") {
+      if (!data.location || !data.dateTime) return;
+
+      const incidentTime = new Date(data.dateTime);
+      const now = new Date();
+
+      if (incidentTime > now) {
+        alert("Future date/time is not allowed.");
+        return;
+      }
+
+      setData({ ...data, step: 2 });
+      return;
+    }
+
+    if (!data.locationFrom || !data.locationTo || !data.timeFrom || !data.timeTo) {
       return;
     }
 
@@ -96,10 +125,19 @@ export default function ReportFlow({ isOpen, onClose, onSubmit, initialItemType 
         itemType: null,
         title: "",
         category: "",
+        location: "",
+        dateTime: "",
         locationFrom: "",
         locationTo: "",
         timeFrom: "",
         timeTo: "",
+        brand: "",
+        model: "",
+        color: "",
+        quantity: "",
+        identifier: "",
+        contactNumber: "",
+        reward: "",
         description: "",
         image: null,
         video: null,
@@ -167,47 +205,71 @@ export default function ReportFlow({ isOpen, onClose, onSubmit, initialItemType 
                 ))}
               </select>
 
-              <input
-                type="text"
-                placeholder="Location From"
-                value={data.locationFrom}
-                onChange={(e) => setData({ ...data, locationFrom: e.target.value })}
-                className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
-              />
-
-              <input
-                type="text"
-                placeholder="Location To"
-                value={data.locationTo}
-                onChange={(e) => setData({ ...data, locationTo: e.target.value })}
-                className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
-              />
-
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/70">Time Between</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {data.itemType === "found" ? (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Location"
+                    value={data.location}
+                    onChange={(e) => setData({ ...data, location: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
                   <div>
-                    <p className="mb-1 text-xs text-white/60">From</p>
+                    <p className="mb-1 text-xs text-white/60">Time</p>
                     <input
                       type="datetime-local"
-                      value={data.timeFrom}
-                      onChange={(e) => setData({ ...data, timeFrom: e.target.value })}
+                      value={data.dateTime}
+                      onChange={(e) => setData({ ...data, dateTime: e.target.value })}
                       max={maxDateTime}
                       className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
                     />
                   </div>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Location From"
+                    value={data.locationFrom}
+                    onChange={(e) => setData({ ...data, locationFrom: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
+
+                  <input
+                    type="text"
+                    placeholder="Location To"
+                    value={data.locationTo}
+                    onChange={(e) => setData({ ...data, locationTo: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
+
                   <div>
-                    <p className="mb-1 text-xs text-white/60">To</p>
-                    <input
-                      type="datetime-local"
-                      value={data.timeTo}
-                      onChange={(e) => setData({ ...data, timeTo: e.target.value })}
-                      max={maxDateTime}
-                      className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
-                    />
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/70">Time Between</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="mb-1 text-xs text-white/60">From</p>
+                        <input
+                          type="datetime-local"
+                          value={data.timeFrom}
+                          onChange={(e) => setData({ ...data, timeFrom: e.target.value })}
+                          max={maxDateTime}
+                          className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs text-white/60">To</p>
+                        <input
+                          type="datetime-local"
+                          value={data.timeTo}
+                          onChange={(e) => setData({ ...data, timeTo: e.target.value })}
+                          max={maxDateTime}
+                          className="w-full rounded-xl border border-white/10 bg-onyx px-4 py-2 text-white focus:border-cyan focus:outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </>
+              )}
 
               <textarea
                 placeholder="Description"
@@ -217,16 +279,83 @@ export default function ReportFlow({ isOpen, onClose, onSubmit, initialItemType 
                 rows={3}
               />
 
+              <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-white/70">More Details</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    placeholder="Brand (optional)"
+                    value={data.brand}
+                    onChange={(e) => setData({ ...data, brand: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Model (optional)"
+                    value={data.model}
+                    onChange={(e) => setData({ ...data, model: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Color (optional)"
+                    value={data.color}
+                    onChange={(e) => setData({ ...data, color: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Quantity (optional)"
+                    value={data.quantity}
+                    onChange={(e) => setData({ ...data, quantity: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Unique identifier (serial no., sticker, engraving)"
+                  value={data.identifier}
+                  onChange={(e) => setData({ ...data, identifier: e.target.value })}
+                  className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    placeholder="Contact number (optional)"
+                    value={data.contactNumber}
+                    onChange={(e) => setData({ ...data, contactNumber: e.target.value })}
+                    className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                  />
+                  {data.itemType === "lost" ? (
+                    <input
+                      type="text"
+                      placeholder="Reward (optional)"
+                      value={data.reward}
+                      onChange={(e) => setData({ ...data, reward: e.target.value })}
+                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      placeholder="Found condition (optional)"
+                      value={data.reward}
+                      onChange={(e) => setData({ ...data, reward: e.target.value })}
+                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-sm text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                    />
+                  )}
+                </div>
+              </div>
+
               <button
                 onClick={handleStep1Next}
                 disabled={
                   !data.itemType ||
                   !data.title ||
                   !data.category ||
-                  !data.locationFrom ||
-                  !data.locationTo ||
-                  !data.timeFrom ||
-                  !data.timeTo
+                  (data.itemType === "found"
+                    ? !data.location || !data.dateTime
+                    : !data.locationFrom || !data.locationTo || !data.timeFrom || !data.timeTo)
                 }
                 className="w-full rounded-xl bg-gradient-to-r from-cyan to-magenta px-4 py-3 font-semibold text-black transition disabled:opacity-50"
               >

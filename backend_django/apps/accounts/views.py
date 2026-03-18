@@ -35,7 +35,19 @@ def signup_user(request):
     serializer = UserSignupSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
-    return Response({"success": True, "message": "User registered successfully.", "userId": user.id}, status=status.HTTP_201_CREATED)
+    return Response(
+        {
+            "success": True,
+            "message": "User registered and saved to database.",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "fullName": user.full_name,
+            },
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["POST"])

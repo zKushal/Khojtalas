@@ -18,6 +18,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [createdUser, setCreatedUser] = useState<{ id: number; email: string; username: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -40,19 +41,26 @@ export default function SignupPage() {
     if (!name.trim()) return setError("Full name is required.");
     if (!email.trim()) return setError("Email is required.");
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Please enter a valid email.");
-    if (password.length < 6) return setError("Password must be at least 6 characters.");
+    if (password.length < 8) return setError("Password must be at least 8 characters.");
     if (password !== confirmPassword) return setError("Passwords do not match.");
 
     setLoading(true);
 
     try {
-      const message = await signup({
+      const result = await signup({
         fullName: name.trim(),
         email: email.trim(),
         password,
       });
 
-      setSuccess(message);
+      setSuccess(result.message);
+      if (result.user) {
+        setCreatedUser({
+          id: result.user.id,
+          email: result.user.email,
+          username: result.user.username,
+        });
+      }
       const query = new URLSearchParams({ next: nextPath });
       if (intent) query.set("intent", intent);
 
@@ -111,6 +119,11 @@ export default function SignupPage() {
           {success ? (
             <div className="rounded-xl border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs text-cyan">
               {success} Redirecting to login...
+              {createdUser ? (
+                <div className="mt-1 text-[11px] text-cyan/90">
+                  Saved user: #{createdUser.id || "new"} / {createdUser.username}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

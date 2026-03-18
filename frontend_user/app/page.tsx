@@ -107,6 +107,11 @@ export default function HomePage() {
     newPassword: "",
     confirmPassword: "",
   });
+  const [passwordVisibility, setPasswordVisibility] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   useEffect(() => {
@@ -206,8 +211,11 @@ export default function HomePage() {
 
   const handleReportSubmit = async (data: ReportFlowData) => {
     try {
-      const resolvedLocationFrom = data.locationFrom;
-      const resolvedLocationTo = data.locationTo;
+      const isFoundItem = (data.itemType || "lost") === "found";
+      const resolvedLocationFrom = isFoundItem ? (data.location || data.locationFrom) : data.locationFrom;
+      const resolvedLocationTo = isFoundItem ? (data.location || data.locationTo || data.locationFrom) : data.locationTo;
+      const resolvedTimeFrom = isFoundItem ? (data.dateTime || data.timeFrom) : data.timeFrom;
+      const resolvedTimeTo = isFoundItem ? (data.dateTime || data.timeTo || data.timeFrom) : data.timeTo;
 
       const formData = new FormData();
       formData.append("itemType", data.itemType || "lost");
@@ -215,10 +223,23 @@ export default function HomePage() {
       formData.append("category", data.category);
       formData.append("locationFrom", resolvedLocationFrom);
       formData.append("locationTo", resolvedLocationTo);
-      formData.append("timeFrom", data.timeFrom);
-      formData.append("timeTo", data.timeTo);
-      formData.append("location", `${resolvedLocationFrom} -> ${resolvedLocationTo}`);
-      formData.append("dateTime", data.timeFrom);
+      formData.append("timeFrom", resolvedTimeFrom);
+      formData.append("timeTo", resolvedTimeTo);
+      formData.append("location", isFoundItem ? resolvedLocationFrom : `${resolvedLocationFrom} -> ${resolvedLocationTo}`);
+      formData.append("dateTime", resolvedTimeFrom);
+      formData.append(
+        "featureData",
+        JSON.stringify({
+          brand: data.brand,
+          model: data.model,
+          color: data.color,
+          quantity: data.quantity ? Number(data.quantity) : null,
+          identifier: data.identifier,
+          contactNumber: data.contactNumber,
+          rewardOrCondition: data.reward,
+          reportKind: data.itemType || "lost",
+        }),
+      );
       formData.append("description", data.description);
       formData.append("authenticityDetail", data.authenticityDetail);
       formData.append("tags", data.category.toLowerCase());
@@ -865,33 +886,71 @@ export default function HomePage() {
                 <article className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
                   <h3 className="text-base font-semibold text-white">Security</h3>
                   <div className="mt-4 space-y-2">
-                    <input
-                      type="password"
-                      value={passwordForm.currentPassword}
-                      onChange={(event) =>
-                        setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))
-                      }
-                      placeholder="Current password"
-                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
-                    />
-                    <input
-                      type="password"
-                      value={passwordForm.newPassword}
-                      onChange={(event) =>
-                        setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))
-                      }
-                      placeholder="New password"
-                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
-                    />
-                    <input
-                      type="password"
-                      value={passwordForm.confirmPassword}
-                      onChange={(event) =>
-                        setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))
-                      }
-                      placeholder="Confirm new password"
-                      className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
-                    />
+                    <div className="relative">
+                      <input
+                        type={passwordVisibility.current ? "text" : "password"}
+                        value={passwordForm.currentPassword}
+                        onChange={(event) =>
+                          setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))
+                        }
+                        placeholder="Current password"
+                        className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 pr-11 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPasswordVisibility((current) => ({ ...current, current: !current.current }))
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-white/5 p-1.5 text-white/80 hover:text-white"
+                        aria-label={passwordVisibility.current ? "Hide current password" : "Show current password"}
+                      >
+                        {passwordVisibility.current ? "◉" : "◎"}
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type={passwordVisibility.next ? "text" : "password"}
+                        value={passwordForm.newPassword}
+                        onChange={(event) =>
+                          setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))
+                        }
+                        placeholder="New password"
+                        className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 pr-11 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPasswordVisibility((current) => ({ ...current, next: !current.next }))
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-white/5 p-1.5 text-white/80 hover:text-white"
+                        aria-label={passwordVisibility.next ? "Hide new password" : "Show new password"}
+                      >
+                        {passwordVisibility.next ? "◉" : "◎"}
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type={passwordVisibility.confirm ? "text" : "password"}
+                        value={passwordForm.confirmPassword}
+                        onChange={(event) =>
+                          setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))
+                        }
+                        placeholder="Confirm new password"
+                        className="w-full rounded-xl border border-white/10 bg-onyx px-3 py-2 pr-11 text-white placeholder-white/40 focus:border-cyan focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPasswordVisibility((current) => ({ ...current, confirm: !current.confirm }))
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-white/5 p-1.5 text-white/80 hover:text-white"
+                        aria-label={passwordVisibility.confirm ? "Hide confirm password" : "Show confirm password"}
+                      >
+                        {passwordVisibility.confirm ? "◉" : "◎"}
+                      </button>
+                    </div>
                     <button
                       type="button"
                       onClick={handleChangePassword}

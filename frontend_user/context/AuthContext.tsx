@@ -19,6 +19,16 @@ type SignupPayload = {
   password: string;
 };
 
+type SignupResult = {
+  message: string;
+  user?: {
+    id: number;
+    username: string;
+    email: string;
+    fullName?: string;
+  };
+};
+
 type LoginPayload = {
   email: string;
   password: string;
@@ -29,7 +39,7 @@ type AuthContextValue = {
   token: string | null;
   isAuthenticated: boolean;
   isInitializing: boolean;
-  signup: (payload: SignupPayload) => Promise<string>;
+  signup: (payload: SignupPayload) => Promise<SignupResult>;
   login: (payload: LoginPayload) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
@@ -68,7 +78,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password: payload.password,
     });
 
-    return response.data.message || "Account created successfully.";
+    return {
+      message: response?.data?.message || "Account created successfully.",
+      user: response?.data?.user,
+    };
   };
 
   const login = async (payload: LoginPayload) => {
